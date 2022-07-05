@@ -6,7 +6,7 @@
 
 Due to the nature of the program, the engine is required to store and load a vast amount of different types of data from the user's hard-drive. In order to streamline this parsing and/or serialization process, Genome implements an object persistence system using its own built-in runtime type information (RTTI) system.
 
-By using special preprocessor macros, any class derived from `bCObjectBase` may declare its own member properties in such a way that when the object is then written into a file using the `bCAccessorPropertyObject` class, its associated properties will be automatically serialized into the stream. When the object is then read back from the file, the class will be automatically initialized using the stored members.
+By using special preprocessor macros, any class derived from `bCObjectRefBase` may declare its own member properties in such a way that when the object is then written into a file using the `bCAccessorPropertyObject` class, its associated properties will be automatically serialized into the stream. When the object is then read back from the file, the class will be automatically initialized using the stored members.
 
 Additionally, classes may overload the `Read` and `Write` (`OnRead` and `OnWrite` in Risen 1) virtual methods, that allow the class to save additional data required during parsing (such as paths to other necessary files).
 
@@ -43,37 +43,51 @@ struct eCArchiveFile
 };
 ```
 
+``` cpp
+union bCString
+{
+	// If this is a regular file
+	struct
+	{
+		uint16_t length;
+		char value[length];
+	}
+	// If this is a valid eCArchiveFile (GENOMFLE)
+	uint16_t index;
+};
+```
+
 
 ### bCAccessorPropertyObject
 
-``` cpp
-bCAccessorPropertyObject::Read 
-{
-	uint16_t	version;	// 0x0001
-	bool		hasPropertyObject;
-	if (hasPropertyObject)
+=== "Gothic 3"
+
+	``` cpp
+	bCAccessorPropertyObject::Read 
 	{
-		bCPropertyObjectSingleton::ReadObject
+		uint16_t	version;	// 0x0001
+		bool		hasPropertyObject;
+		if (hasPropertyObject)
 		{
-			uint16_t	version;	// 0x0001
-			bool		isPersistable;	// 0x01 (GETrue)
-			bCString	className;
-			bCPropertyObjectFactory::ReadObject
+			bCPropertyObjectSingleton::ReadObject
 			{
-				uint16_t	version;		// 0x0001
-				bool		isRoot;			// 0x00 (GEFalse)
-				uint16_t	classVersion;
-				bTPropertyObject<%,%>::Read
+				uint16_t	version;	// 0x0001
+				bool		isPersistable;	// 0x01 (GETrue)
+				bCString	className;
+				bCPropertyObjectFactory::ReadObject
 				{
-					bCPropertyObjectBase::Read
+					uint16_t	version;		// 0x0001
+					bool		isRoot;			// 0x00 (GEFalse)
+					uint16_t	classVersion;
+					bTPropertyObject<%,%>::Read
 					{
-						uint16_t version;	// 0x00C9 (201)
+						bCPropertyObjectBase::Read
+						{
+							uint16_t version;	// 0x00C9 (201)
+						}
+						uint32_t size;
 					}
-					uint32_t size;
-				}
-				bTPropertyObject<%,%>::ReadData
-				{
-					bCPropertyObjectBase::ReadData
+					bTPropertyObject<%,%>::ReadData
 					{
 						uint16_t version;	// 0x00C9 (201)
 						uint32_t count;
@@ -85,18 +99,57 @@ bCAccessorPropertyObject::Read
 							uint32_t	size;
 							uint8_t		value[size];
 						}
-					}
-					%::Read
-					{
-						// ClassName::OnRead/OnWrite()
-						// uint16_t ClassVersion; ...
+						bCObjectBase::Read
+						{
+							// Gets overloaded by derived class
+						}
 					}
 				}
 			}
 		}
 	}
-}
-```
+	```
+
+=== "Risen"
+
+	``` cpp
+	bCAccessorPropertyObject::Read 
+	{
+		uint16_t	version;	// 0x0001
+		bool		hasPropertyObject;
+		if (hasPropertyObject)
+		{
+			bCPropertyObjectTypeBase::ReadObject
+			{
+				uint16_t	version;	// 0x0001
+				bool		isPersistable;	// 0x01 (GETrue)
+				bCString	className;
+				uint16_t	version;		// 0x0001
+				bool		isRoot;			// 0x00 (GEFalse)
+				uint16_t	classVersion;
+				bCObjectBase::ReadData
+				{
+					uint16_t version;	// 0x00C9 (201)
+					uint32_t size;
+					uint16_t version;	// 0x00C9 (201)
+					uint32_t count;
+					for (count)
+					{
+						bCString	name;
+						bCString	type;
+						uint16_t	version;	// 0x001E (30)
+						uint32_t	size;
+						uint8_t		value[size];
+					}
+					bCObjectBase::OnRead
+					{
+						// Gets overloaded by derived class
+					}
+				}
+			}
+		}
+	}
+	```
 
 ### eCProcessibleElement
 
@@ -104,13 +157,18 @@ bCAccessorPropertyObject::Read
 === "Gothic 3"
 
 	```cpp
-	eCProcessibleElement::Load
+	eCProcessibleElement::Load 
 	{
-		uint32_t magic; // 0xD0DEFADE
 		bCAccessorPropertyObject::Read
 		{
 			// Look above for bCAccessorPropertyObject definition
 		}
+	}
+	
+	// in a separate file (.*dat, e.g. .lrentdat, lrgeodat)
+	eCProcessibleElement::DoLoadData
+	{
+		// Gets overloaded by derived class
 	}
 	```
 
@@ -119,6 +177,7 @@ bCAccessorPropertyObject::Read
 	```cpp
 	eCProcessibleElement::Load
 	{
+		uint32_t magic; // 0xD0DEFADE
 		bCAccessorPropertyObject::Read
 		{
 			// Look above for bCAccessorPropertyObject definition
